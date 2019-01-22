@@ -1,7 +1,7 @@
 CC=gcc
-CFLAGS=-Wall -Pedantic
+CFLAGS=-Wall -pedantic -levent -lnghttp2 -lssl
 
-server: all
+server: server
 	$(CC) $(CFLAGS) -o http2-server server.c
 
 .PHONY: clean
