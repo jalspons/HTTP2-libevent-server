@@ -1,4 +1,4 @@
-#ifndef __sgi
+#ifdef __sgi
 #define errx(exitcode, format, args...)                                 \
 {                                                                   \
     warnx(format, ##args);                                     \
@@ -14,11 +14,11 @@
 #endif
 
 
-#ifdef HAVE_SYS_SOCKET_H
+#ifndef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
 #endif
 
-#ifdef HAVE_NETDB_H
+#ifndef HAVE_NETDB_H
 #include <netdb.h>
 #endif
 
@@ -34,11 +34,16 @@
 #include <netinet/in.h>
 #endif
 
+#ifndef __sgi
+#include <err.h>
+#endif
+
 #include <ctype.h>
 #include <errno.h>
 #include <netinet/tcp.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -347,11 +352,31 @@ static ssize_t send_callback(nghttp2_session *session, const uint8_t *data,
 
 
 
-static int ends_with(const char *s, const char *sub);
+static int ends_with(const char *s, const char *sub)
+{
+	size_t slen = strlen(s);
+	size_t sublen = strlen(sub);
+	if (slen < sublen) {
+		return 0;
+	}
 
+	return memcmp(s + slen - sublen, sub, sublen) == 0;
+}
 
+static uint8_t hex_to_uint(uint8_t c)
+{
+	if ('0' <= c && c <= '9') {
+		return (uint8_t)(c - '0');
+	}
+	if ('A' <= c && c <= 'F') {
+		return (uint8_t)(c - 'A' + 10);
+	}
+	if ('a' <= c && c <= 'f') {
+		return (uint8_t)(c - 'a' + 10);
+	}
 
-static uint8_t hex_to_uint(uint8_t c);
+	return 0;
+}
 
 
 
