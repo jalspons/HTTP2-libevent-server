@@ -1,0 +1,10 @@
+# Keyfiles 
+*.crt
+*.key
+*.pem
+
+# Executables
+http2-server
+
+# Skip log folder and its contents
+log
