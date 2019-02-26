@@ -6,9 +6,10 @@
 1. Build a HTTP2-server
 2. Choose two features introduced with HTTP2 and measure how they improve the HTTP protocol functionalities (HTTP1 vs. HTTP2)
 
-#### The implementation consists of server and client implementations for testing multiplexing and server push features.
 
-### Client uses an implementation of
+The implementation consists of server and client implementations for testing multiplexing and server push features. 
+
+The repository also includes some implementations of HTTP1 servers. 
 
 ## Dependencies
 * nghttp2
