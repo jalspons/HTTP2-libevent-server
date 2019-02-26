@@ -56,8 +56,6 @@
 #include <event2/bufferevent_ssl.h>
 #include <event2/listener.h>
 
-#include <json-c/json.h>
-
 #include <nghttp2/nghttp2.h>
 
 #include "server.h"
@@ -110,9 +108,7 @@ static SSL_CTX *create_ssl_ctx(const char *key_file, const char *cert_file)
 				ERR_error_string(ERR_get_error(), NULL));
 	}
 	
-    /* 
-     * The following may need to be changed in this implementation 
-     */
+    
     SSL_CTX_set_options(ssl_ctx, 
             SSL_OP_ALL |
             SSL_OP_SINGLE_DH_USE |
@@ -128,9 +124,6 @@ static SSL_CTX *create_ssl_ctx(const char *key_file, const char *cert_file)
     SSL_CTX_set_tmp_ecdh(ssl_ctx, ecdh);
     EC_KEY_free(ecdh);
 
-
-    //SSL_CTX_set_ecdh_auto(ssl_ctx, 1);
-
     if (SSL_CTX_use_PrivateKey_file(ssl_ctx, key_file, SSL_FILETYPE_PEM) != 1) {
         errx(1, "Could not read private key file %s", key_file);
     }
@@ -143,9 +136,9 @@ static SSL_CTX *create_ssl_ctx(const char *key_file, const char *cert_file)
 			NGHTTP2_PROTO_VERSION_ID_LEN);
 	next_proto_list_len = NGHTTP2_PROTO_VERSION_ID_LEN + 1;
 
-//#ifndef OPENSSL_NO_NEXTPROTOENG
-//	SSL_CTX_set_next_protos_advertised_cb(ssl_ctx, next_proto_cb, NULL);
-//#endif
+#ifndef OPENSSL_NO_NEXTPROTOENG
+	SSL_CTX_set_next_protos_advertised_cb(ssl_ctx, next_proto_cb, NULL);
+#endif
 
 #if OPENSSL_VERSION_NUMBER >= 0x10002000L
 	SSL_CTX_set_alpn_select_cb(ssl_ctx, alpn_select_proto_cb, NULL);
@@ -410,7 +403,7 @@ static int send_notification(http2_session_data *session_data,
     }
 
     get_time(time_buffer, TIME_BUF_LEN);
-    char time_str[30] = "\0";
+    char time_str[30];
     snprintf(time_str, 30, "%ld", strlen(time_buffer));
     char *path = "/notify";
 
@@ -423,7 +416,8 @@ static int send_notification(http2_session_data *session_data,
 
     http2_stream_data *new_stream_data = create_http2_stream_data(
             session_data, promised_stream_id);
-    strncpy(new_stream_data->request_path, "/notify", strlen("notify") + 1);
+    strncpy(new_stream_data->request_path, path, strlen(path));
+    new_stream_data->request_path[strlen(path)] = '\0';
 
     writelen = write(pipefd[1], time_buffer, sizeof(time_buffer) - 1);
     close(pipefd[1]);
@@ -459,7 +453,6 @@ static int error_reply(nghttp2_session *session,
         MAKE_NV("Content-type", "text/html")
     };
 
-    //fprintf(stderr, "Error reply 1\n");
     rv = pipe(pipefd);
     if (rv != 0) {
         warn("Could not create pipe");
@@ -474,7 +467,6 @@ static int error_reply(nghttp2_session *session,
         return 0;
     }
 
-    //fprintf(stderr, "Error reply 2\n");
     writelen = write(pipefd[1], ERROR_HTML, sizeof(ERROR_HTML) - 1);
     close(pipefd[1]);
 
@@ -483,10 +475,8 @@ static int error_reply(nghttp2_session *session,
         return -1;
     }
 
-    //fprintf(stderr, "Error reply 3\n");
     stream_data->fd = pipefd[0];
 
-    //fprintf(stderr, "Error reply 4\n");
     if (send_response(session, stream_data->stream_id, hdrs, 
                 ARRLEN(hdrs), pipefd[0]) != 0) {
 
@@ -514,7 +504,7 @@ static int on_header_callback(nghttp2_session *session,
     // Look the headers and find a match for name/value pair
 	// Store the requested path into stream_data object if found
 	switch (frame->hd.type) {
-	case NGHTTP2_HEADERS:
+    case NGHTTP2_HEADERS:
     case NGHTTP2_DATA:
 		if (frame->headers.cat != NGHTTP2_HCAT_REQUEST) {
 			break;
@@ -527,9 +517,6 @@ static int on_header_callback(nghttp2_session *session,
                     stream_data->request_path)) {
 			break;
 		}
-
-//        fprintf(stderr, "name: %s, value: %s, namelen: %ld, sizeof: %ld\n", 
-//            name, value, namelen, sizeof(name));
 
         if (namelen == sizeof(METHOD) - 1 &&
                 memcmp(METHOD, name, namelen) == 0) {
@@ -587,7 +574,7 @@ static int on_request_recv(nghttp2_session *session,
         http2_session_data *session_data,
         http2_stream_data *stream_data)
 {
-    int fd, rv2;
+    int fd;
     
     char *rel_path, file_size_header[FILE_SIZE_HEADER_LEN], 
          time_buffer[TIME_BUF_LEN];
@@ -601,14 +588,12 @@ static int on_request_recv(nghttp2_session *session,
         return 0;
     }
 
-    if (!check_path(stream_data->request_path) || !(strlen(stream_data->request_path) < 3 ||
+    if (check_path(stream_data->request_path) && !(strlen(stream_data->request_path) < 3 ||
             memcmp(stream_data->request_path, "/index.html", strlen("/index.html")) == 0 || 
             memcmp(stream_data->request_path, "/css/styles.css", strlen("/css/styles.css")) == 0)) {
-        fprintf(stderr, "ERROR F***ING FAVICON\n");
         if (error_reply(session, stream_data) != 0) {
           return NGHTTP2_ERR_CALLBACK_FAILURE;
         }
-  
         return 0;
     }
 
@@ -629,13 +614,6 @@ static int on_request_recv(nghttp2_session *session,
     }
     stream_data->fd = fd;
 
-    // Create a string describing the content length (util.c)
-    get_file_size(file_size_header, rel_path, FILE_SIZE_HEADER_LEN);
-    get_time(time_buffer, TIME_BUF_LEN);
-
-    fprintf(stderr, "Status: %s\n", GET_STATUS(stream_data->method));
-   
-    char *status = GET_STATUS(stream_data->method);
     nghttp2_nv hdrs[] = {
         MAKE_NV(":status", "200"), 
         MAKE_NV("Content-Type", "text/html; charset=utf-8"),
@@ -649,31 +627,13 @@ static int on_request_recv(nghttp2_session *session,
         return NGHTTP2_ERR_CALLBACK_FAILURE;
     }
 
-//    fprintf(stderr, "[PUSH PROMISE (NOTIFY)] S ----------> C\n"); 
-//    // Send the push promise for the notification
-//    nghttp2_nv hdrs_promise2[] = {
-//        MAKE_NV(":path", "/notify"),
-//        MAKE_NV(":authority", "localhost:8080"),
-//        MAKE_NV(":scheme", "https"),
-//        MAKE_NV(":method", "GET"),
-//    };
-//
-//    rv2 = nghttp2_submit_push_promise(session, NGHTTP2_FLAG_NONE, 
-//            stream_data->stream_id, hdrs_promise2, 
-//            ARRLEN(hdrs_promise2), NULL);
-//    if (rv2 < 0) {
-//        fprintf(stderr, "Failed to submit 2nd push promise: %d, %s\n", 
-//                rv2, nghttp2_strerror(rv2));
-//        return NGHTTP2_ERR_CALLBACK_FAILURE;
-//    }
-
     /* * * * * * * * * *
      * PUSH PROMISE #1 *
      * * * * * * * * * */
 
-    int i;
-
-    for (i = 0; i < SAMPLE_SIZE; ++i) {
+    // SAMPLE SIZE is located in the test.h header file which is created by
+    // the testsuite script
+    for (int i = 0; i < SAMPLE_SIZE; ++i) {
         if (memcmp(rel_path, "index.html", strlen("index.html")) == 0) {
             int promised_stream_id,  prom_fd;
        
@@ -762,7 +722,6 @@ static int on_frame_recv_callback(nghttp2_session *session,
 					session, frame->hd.stream_id);
 
             start = 1;
-            //fprintf(stderr, "TOTAL LEN: %ld\n", total_len);
 
 			/* For DATA nad HEADERS frame, this callback may be
 			 * called after on_stream_close_callback(). Check
@@ -792,8 +751,7 @@ static int on_data_chunk_recv_callback(nghttp2_session *session,
     
     total_len += len;
 
-    //fprintf(stderr, "On_data_chunk_recv_callback\n");
-
+    // Not maybe the best solution for skipping content headers in multipart-form-data
     if (start) {
         int j = 0;
         // Go through the boundary id
@@ -810,7 +768,7 @@ static int on_data_chunk_recv_callback(nghttp2_session *session,
         while (data[i + 1] != '.' && j < 12) {
             filename[j++] = data[1 + (i++)];
         }
-        strncat(filename, ".jpg", sizeof(".jpg"));
+        strncat(filename, ".jpg", strlen(".jpg") + 1);
         // Skip the end of the row
         for (i += 1; data[++i] != '\n';);
         // Skip Content-type row
