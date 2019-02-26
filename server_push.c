@@ -751,6 +751,9 @@ static int on_data_chunk_recv_callback(nghttp2_session *session,
     
     total_len += len;
 
+    // Parsing the content headers in with HTTP-message containing
+    // multipart-form-data
+    // 
     // Not maybe the best solution for skipping content headers in multipart-form-data
     if (start) {
         int j = 0;

@@ -622,6 +622,8 @@ static int on_data_chunk_recv_callback(nghttp2_session *session,
     
     total_len += len;
 
+    // Parsing content-headers in multipart-form-data HTTP-message
+    // 
     // This is a bit rigid solution. A better one would be using fgets or getline 
     // and parsing with sscanf, for instance.
     if (start) {
